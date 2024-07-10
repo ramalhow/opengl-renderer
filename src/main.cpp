@@ -1,179 +1,200 @@
 // system includes
-#include <stdint.h>
+#include <cassert>
+#include <cstdint>
 #include <iostream>
-#include <chrono>
+#include <stdint.h>
 
 // gl includes
 #include "../include/glad/glad.h"
 #include <GLFW/glfw3.h>
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height){
-    glViewport(0, 0, width, height);
-}
-
-int main()
-{
-    // glfw init
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-    GLFWwindow* window = glfwCreateWindow(800, 600, "OpenGL-Renderer", nullptr, nullptr);
-    if(window == nullptr) {
-        std::cout << "Failed to create window" << "\n";
-        glfwTerminate();
-        return -1;
-    }
-    glfwMakeContextCurrent(window);
-
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-
-
-    // glad init
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        std::cout << "failed to init glad" << "\n";
-        return -1;
-    }
-
-    // criando um vertex shader
-    const char* vertexShaderSource = 
+// shaders
+const static char *vertexShaderSource =
     "#version 330 core\n"
     "layout (location = 0) in vec3 pos; \n"
     "void main() { \n"
     "   gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);"
     "}\0";
 
-    // criando o id do vertexShader
-    uint32_t vertexShader;
-    vertexShader = glCreateShader(GL_VERTEX_SHADER);
-
-    // compilando o vertex shader
-    glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
-    glCompileShader(vertexShader);
-
-    // checkando a compilação
-    int vertexStatus;
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &vertexStatus);
-
-    // se falhar, joga no log
-    if(vertexStatus == 0) {
-        char log[512];
-        glGetShaderInfoLog(vertexShader, 512, nullptr, log);
-        std::cout << "ERROR: falied to compile the vertex shader, here's the log: \n" << log;
-        return -1;
-    }
-
-    std::cout << "INFO: vertex shader compiled with sucess\n";
-
-    // criando o pixel/fragment shader
-    const char* fragmentShaderSource =
+const static char *fragmentShaderSource =
     "#version 330 core\n"
     "out vec4 FragColor;\n"
     "void main() {\n"
     "    FragColor = vec4(1.0f, 0.0f, 0.0f, 1.0f);\n"
     "}\0";
 
-    // compilando o shader (de novo)
-    unsigned int fragmentShader;
-    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
+static uint32_t shaderProgram;
 
-    // verificando de novo, por via das dúvidas
-    int fragmentStatus;
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &fragmentStatus);
+bool buildShaders() {
+  // creating the obj
+  uint32_t vertexShader;
+  vertexShader = glCreateShader(GL_VERTEX_SHADER);
 
-    // se falhar, joga no log
-    if(fragmentStatus == 0) {
-        char log[512];
-        glGetShaderInfoLog(fragmentShader, 512, nullptr, log);
-        std::cout << "ERROR: falied to compile the fragment shader, here's the log: \n" << log;
-        return -1;
-    }
+  // compiling
+  glShaderSource(vertexShader, 1, &vertexShaderSource, nullptr);
+  glCompileShader(vertexShader);
 
-    std::cout << "INFO: fragment shader compiled with sucess\n";
+  // verifying the shader compilation
+  int vertexStatus;
+  glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &vertexStatus);
 
-    // criando o shader program
-    uint32_t shaderProgram;
-    shaderProgram = glCreateProgram();
+  // log if it fails
+  if (vertexStatus == 0) {
+    char log[512];
+    glGetShaderInfoLog(vertexShader, 512, nullptr, log);
+    std::cout
+        << "ERROR: falied to compile the vertex shader, here's the log: \n"
+        << log;
+    return false;
+  }
 
-    // linkando os shaders num só programa
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
+  std::cout << "INFO: vertex shader compiled with sucess\n";
 
-    std::cout << "INFO: shader program linked with sucess\n";
+  // same thing again
+  unsigned int fragmentShader;
+  fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+  glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+  glCompileShader(fragmentShader);
 
-    // checkando se não deu merda na linkagem
-    int linkStatus;
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &linkStatus);
+  int fragmentStatus;
+  glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &fragmentStatus);
 
-    if(linkStatus == 0) {
-        char log[512];
-        glGetProgramInfoLog(shaderProgram, 512, nullptr, log);
-        std::cout << "ERROR: falied to link the shaders into a shader program, here's the log: \n" << log;
-        return -1;
-    }
-    // deletando os shaders objects, já que não vão ser mais usados daqui pra frente
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
+  if (fragmentStatus == 0) {
+    char log[512];
+    glGetShaderInfoLog(fragmentShader, 512, nullptr, log);
+    std::cout
+        << "ERROR: falied to compile the fragment shader, here's the log: \n"
+        << log;
+    return false;
+  }
 
-    // as coordernadas estão no sentido anti-horário
-    // e todas estão normalizadas
-    const float vertexData[] = {
-        -0.5f,-0.5f, 0.0f,
-        0.5f, -0.5f, 0.0f,
-        0.0f, 0.5f,  0.0f 
-    };
+  std::cout << "INFO: fragment shader compiled with sucess\n";
 
-    // criando o VAO (vertex array object), ele deve vir ANTES do bind no VBO
-    uint32_t VAO;
-    glGenVertexArrays(1, &VAO);
+  // creating the main shader program
+  shaderProgram = glCreateProgram();
 
-    // criando um id pra o VBO (vertex buffer object)
-    uint32_t VBO;
-    glGenBuffers(1, &VBO);
+  // linking all shaders
+  glAttachShader(shaderProgram, vertexShader);
+  glAttachShader(shaderProgram, fragmentShader);
+  glLinkProgram(shaderProgram);
 
-    // dando bind no VAO, pra todos os vertex attribs serem ligados a ele
-    glBindVertexArray(VAO);
-    
-    // vinculando o vbo no GL_ARRAY_BUFFER
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  std::cout << "INFO: shader program linked with sucess\n";
 
-    // copiando os dados para o buffer, da CPU para a GPU
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), vertexData, GL_STATIC_DRAW);
+  // verifying the process
+  int linkStatus;
+  glGetProgramiv(shaderProgram, GL_LINK_STATUS, &linkStatus);
 
-    // instruindo o opengl a como utilizar nosso vertex data nos vertex attributes
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
+  if (linkStatus == 0) {
+    char log[512];
+    glGetProgramInfoLog(shaderProgram, 512, nullptr, log);
+    std::cout << "ERROR: falied to link the shaders into a shader program, "
+                 "here's the log: \n"
+              << log;
+    return false;
+  }
 
-    // depois de configurar tudo, podemos desplugar o VAO
-    glBindVertexArray(0);
+  // deleting the shader objs
+  glDeleteShader(vertexShader);
+  glDeleteShader(fragmentShader);
 
-    // main render loop
-    while(!glfwWindowShouldClose(window)) {
+  return true;
+}
 
-        if(glfwGetKey(window, GLFW_KEY_ESCAPE)) {
-            glfwSetWindowShouldClose(window, true);
-        }
+// input data
+const float vertexData[] = {
+      0.5f,  0.5f,  0.0f,
+      0.5f,  -0.5f, 0.0f,
+      -0.5f, -0.5f, 0.0f, 
+      -0.5f, 0.5f, 0.0f
+};
 
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+  unsigned int indices[] = {
+      0, 1, 3, // first triangle
+      1, 2, 3  // second triangle
+  };
 
-        glUseProgram(shaderProgram);
-        glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 3); // desenha!
+void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
+  glViewport(0, 0, width, height);
+}
 
 
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
 
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteProgram(shaderProgram);
+int main() {
+  // glfw init
+  glfwInit();
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
+  GLFWwindow *window =
+      glfwCreateWindow(800, 600, "OpenGL-Renderer", nullptr, nullptr);
+  if (window == nullptr) {
+    std::cout << "Failed to create window"
+              << "\n";
     glfwTerminate();
-    return 0;
+    return -1;
+  }
+  glfwMakeContextCurrent(window);
+  glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+
+  // glad init
+  if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+    std::cout << "failed to init glad"
+              << "\n";
+    return -1;
+  }
+
+  buildShaders();
+
+  // creating all buffer objs
+  unsigned int VAO, VBO, EBO;
+
+  glGenVertexArrays(1, &VAO); // needs to be the first
+
+  glGenBuffers(1, &VBO);
+  glGenBuffers(1, &EBO);
+
+  // binding the main VAO for the scene
+  glBindVertexArray(VAO);
+
+  // bind and copy the vertices
+  glBindBuffer(GL_ARRAY_BUFFER, VBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), vertexData, GL_STATIC_DRAW);
+
+  // bind and copy the indices
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices,
+               GL_STATIC_DRAW);
+
+  // setting the attrib layout
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+  glEnableVertexAttribArray(0);
+
+  // unbind the the VAO
+  glBindVertexArray(0);
+
+  // main render loop
+  while (!glfwWindowShouldClose(window)) {
+
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE)) {
+      glfwSetWindowShouldClose(window, true);
+    }
+
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(shaderProgram);
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    glfwSwapBuffers(window);
+    glfwPollEvents();
+  }
+
+  glDeleteVertexArrays(1, &VAO);
+  glDeleteBuffers(1, &VBO);
+  glDeleteProgram(shaderProgram);
+
+  glfwTerminate();
+  return 0;
 }
